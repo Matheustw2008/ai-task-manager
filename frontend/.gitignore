@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+*.egg-info/
+.env
+
+# Node
+node_modules/
+dist/
+.DS_Store
+
+# Database
+*.db
+*.sqlite3
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
