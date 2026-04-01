@@ -11,7 +11,7 @@ Base.metadata.create_all(bind=engine)
 
 security = HTTPBearer()
 
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
+ALLOWED_ORIGINS = ["*"]
 
 app = FastAPI(
     title="AI Task Manager",
