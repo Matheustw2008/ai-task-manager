@@ -10,7 +10,7 @@ from app.core.database import Base, engine
 Base.metadata.create_all(bind=engine)
 
 security = HTTPBearer()
-
+# CORS configurado
 ALLOWED_ORIGINS = ["*"]
 
 app = FastAPI(
