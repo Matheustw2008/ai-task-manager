@@ -10,8 +10,13 @@ Base.metadata.create_all(bind=engine)
 
 security = HTTPBearer()
 
-# CORS configurado
-ALLOWED_ORIGINS = ["*"]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app = FastAPI(
     title="AI Task Manager",
