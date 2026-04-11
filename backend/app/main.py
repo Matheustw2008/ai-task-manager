@@ -14,6 +14,9 @@ app = FastAPI(
     title="AI Task Manager",
     description="Gerenciador de tarefas inteligente com IA e leitura de PDFs",
     version="2.0.0",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 app.add_middleware(
@@ -33,6 +36,10 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     if "X-Powered-By" in response.headers:
         del response.headers["X-Powered-By"]
+    if "X-Real-IP" in response.headers:
+        del response.headers["X-Real-IP"]
+    if "X-Forwarded-For" in response.headers:
+        del response.headers["X-Forwarded-For"]
     return response
 
 app.include_router(auth.router)
