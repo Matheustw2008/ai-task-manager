@@ -10,14 +10,6 @@ Base.metadata.create_all(bind=engine)
 
 security = HTTPBearer()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 app = FastAPI(
     title="AI Task Manager",
     description="Gerenciador de tarefas inteligente com IA e leitura de PDFs",
@@ -26,8 +18,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
