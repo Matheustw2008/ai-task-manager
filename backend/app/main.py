@@ -2,13 +2,17 @@ import os
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
-
 from app.api.routes import auth, tasks, pdf
 from app.core.database import Base, engine
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 Base.metadata.create_all(bind=engine)
-
 security = HTTPBearer()
+
+# Rate Limiter
+limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title="AI Task Manager",
@@ -19,12 +23,16 @@ app = FastAPI(
     openapi_url=None,
 )
 
+# Registrar o rate limiter no app
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["https://ai-task-manager-pearl-alpha.vercel.app"],  # CORRIGIDO
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 @app.middleware("http")
