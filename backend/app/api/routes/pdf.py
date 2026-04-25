@@ -7,9 +7,7 @@ from app.models.user import User
 from app.schemas.pdf_document import PDFAskRequest, PDFAskResponse, PDFListResponse, PDFSummarizeResponse, PDFUploadResponse
 from app.services.pdf_service import PDFService
 
-
 router = APIRouter(prefix="/pdf", tags=["PDF"])
-
 
 @router.post("/upload", response_model=PDFUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_pdf(
@@ -32,16 +30,19 @@ async def upload_pdf(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao fazer upload: {str(e)}")
 
 @router.get("/", response_model=List[PDFListResponse])
 def list_pdfs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    service = PDFService(db)
-    return service.get_all(current_user.id)
-
+    try:
+        service = PDFService(db)
+        return service.get_all(current_user.id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao listar PDFs: {str(e)}")
 
 @router.post("/{pdf_id}/summarize", response_model=PDFSummarizeResponse)
 def summarize_pdf(
@@ -55,7 +56,8 @@ def summarize_pdf(
         return PDFSummarizeResponse(id=pdf.id, filename=pdf.filename, summary=pdf.summary)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao resumir PDF: {str(e)}")
 
 @router.post("/{pdf_id}/ask", response_model=PDFAskResponse)
 def ask_pdf(
@@ -70,7 +72,8 @@ def ask_pdf(
         return PDFAskResponse(question=data.question, answer=answer)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao responder pergunta: {str(e)}")
 
 @router.delete("/{pdf_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_pdf(
@@ -83,3 +86,5 @@ def delete_pdf(
         service.delete(pdf_id, current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao deletar PDF: {str(e)}")
