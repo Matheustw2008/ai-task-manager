@@ -1,15 +1,13 @@
 import io
 from typing import List
 import fitz
-from groq import Groq
+from groq import Groq, APIError, AuthenticationError, RateLimitError
 from sqlalchemy.orm import Session
 from app.core.settings import settings
 from app.models.pdf_document import PDFDocument
 from app.repositories.pdf_repository import PDFRepository
 
-
 class PDFService:
-
     def __init__(self, db: Session):
         self.repository = PDFRepository(db)
         self.groq = Groq(api_key=settings.GROQ_API_KEY)
@@ -36,13 +34,23 @@ class PDFService:
         content_truncated = pdf.content[:4000]
         prompt = f"Resuma o seguinte texto em portugues de forma clara e objetiva (maximo 5 paragrafos):\n\n{content_truncated}"
 
-        response = self.groq.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=1024,
-        )
-        summary = response.choices[0].message.content.strip()
-        return self.repository.update_summary(pdf, summary)
+        try:
+            response = self.groq.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1024,
+            )
+            summary = response.choices[0].message.content.strip()
+            return self.repository.update_summary(pdf, summary)
+
+        except AuthenticationError:
+            raise ValueError("Chave do Groq invalida ou expirada. Verifique a variavel GROQ_API_KEY.")
+        except RateLimitError:
+            raise ValueError("Limite de uso do Groq atingido. Tente novamente em alguns minutos.")
+        except APIError as e:
+            raise ValueError(f"Erro na API do Groq: {str(e)}")
+        except Exception as e:
+            raise ValueError(f"Erro inesperado ao resumir: {str(e)}")
 
     def ask(self, pdf_id: int, user_id: int, question: str) -> str:
         pdf = self.repository.get_by_id(pdf_id, user_id)
@@ -52,12 +60,22 @@ class PDFService:
         content_truncated = pdf.content[:4000]
         prompt = f"Com base no texto abaixo, responda a pergunta em portugues:\n\nTexto:\n{content_truncated}\n\nPergunta: {question}"
 
-        response = self.groq.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=512,
-        )
-        return response.choices[0].message.content.strip()
+        try:
+            response = self.groq.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=512,
+            )
+            return response.choices[0].message.content.strip()
+
+        except AuthenticationError:
+            raise ValueError("Chave do Groq invalida ou expirada. Verifique a variavel GROQ_API_KEY.")
+        except RateLimitError:
+            raise ValueError("Limite de uso do Groq atingido. Tente novamente em alguns minutos.")
+        except APIError as e:
+            raise ValueError(f"Erro na API do Groq: {str(e)}")
+        except Exception as e:
+            raise ValueError(f"Erro inesperado ao responder: {str(e)}")
 
     def get_all(self, user_id: int) -> List[PDFDocument]:
         return self.repository.get_all_by_user(user_id)
