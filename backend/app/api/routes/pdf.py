@@ -7,7 +7,8 @@ from app.core.database import get_db
 from app.models.user import User
 from app.schemas.pdf_document import PDFAskRequest, PDFAskResponse, PDFListResponse, PDFSummarizeResponse, PDFUploadResponse
 from app.services.pdf_service import PDFService
-from app.main import limiter  
+from app.main import limiter
+import magic  # <-- ADICIONADO
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +20,25 @@ async def upload_pdf(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if not file.filename.endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Apenas arquivos PDF sao aceitos.")
     try:
         file_bytes = await file.read()
+
+        # 🔒 Limite de tamanho real
+        if len(file_bytes) > 10 * 1024 * 1024:  # 10MB
+            raise HTTPException(status_code=400, detail="Arquivo muito grande. Máximo 10MB.")
+
+        # 🔒 Validação real do conteúdo (MIME)
+        mime = magic.from_buffer(file_bytes[:2048], mime=True)
+        if mime != "application/pdf":
+            raise HTTPException(status_code=400, detail="Arquivo inválido. Apenas PDFs são aceitos.")
+
+        # (opcional, mas mantive sua validação original)
+        if not file.filename.endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Apenas arquivos PDF sao aceitos.")
+
         service = PDFService(db)
         pdf = service.upload(file.filename, file_bytes, current_user.id)
+
         return PDFUploadResponse(
             id=pdf.id,
             filename=pdf.filename,
@@ -32,6 +46,7 @@ async def upload_pdf(
             user_id=pdf.user_id,
             created_at=pdf.created_at,
         )
+
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
@@ -51,9 +66,9 @@ def list_pdfs(
         raise HTTPException(status_code=500, detail="Erro interno do servidor.")
 
 @router.post("/{pdf_id}/summarize", response_model=PDFSummarizeResponse)
-@limiter.limit("5/minute")  # <-- ADICIONADO
+@limiter.limit("5/minute")
 def summarize_pdf(
-    request: Request,  # <-- ADICIONADO
+    request: Request,
     pdf_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -69,9 +84,9 @@ def summarize_pdf(
         raise HTTPException(status_code=500, detail="Erro interno do servidor.")
 
 @router.post("/{pdf_id}/ask", response_model=PDFAskResponse)
-@limiter.limit("10/minute")  # <-- ADICIONADO
+@limiter.limit("10/minute")
 def ask_pdf(
-    request: Request,  # <-- ADICIONADO
+    request: Request,
     pdf_id: int,
     data: PDFAskRequest,
     db: Session = Depends(get_db),
