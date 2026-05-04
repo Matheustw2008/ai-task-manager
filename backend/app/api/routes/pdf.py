@@ -1,12 +1,13 @@
 import logging
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Request
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
 from app.schemas.pdf_document import PDFAskRequest, PDFAskResponse, PDFListResponse, PDFSummarizeResponse, PDFUploadResponse
 from app.services.pdf_service import PDFService
+from app.main import limiter  
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,9 @@ def list_pdfs(
         raise HTTPException(status_code=500, detail="Erro interno do servidor.")
 
 @router.post("/{pdf_id}/summarize", response_model=PDFSummarizeResponse)
+@limiter.limit("5/minute")  # <-- ADICIONADO
 def summarize_pdf(
+    request: Request,  # <-- ADICIONADO
     pdf_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -66,7 +69,9 @@ def summarize_pdf(
         raise HTTPException(status_code=500, detail="Erro interno do servidor.")
 
 @router.post("/{pdf_id}/ask", response_model=PDFAskResponse)
+@limiter.limit("10/minute")  # <-- ADICIONADO
 def ask_pdf(
+    request: Request,  # <-- ADICIONADO
     pdf_id: int,
     data: PDFAskRequest,
     db: Session = Depends(get_db),
