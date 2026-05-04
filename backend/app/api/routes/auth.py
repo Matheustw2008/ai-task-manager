@@ -8,9 +8,9 @@ from slowapi import Limiter
 
 logger = logging.getLogger(__name__)
 
-# CORREÇÃO — usa get_real_ip do main para consistência
+# 🔒 CORREÇÃO — confiar ZERO em headers do cliente
 def get_real_ip(request: Request) -> str:
-    return request.headers.get("X-Real-IP") or request.client.host
+    return request.client.host  # <-- ALTERADO (sem X-Real-IP)
 
 limiter = Limiter(key_func=get_real_ip)
 
