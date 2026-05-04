@@ -1,109 +1,86 @@
-import logging
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from sqlalchemy.orm import Session
-from app.api.deps import get_current_user
-from app.core.database import get_db
-from app.models.user import User
-from app.schemas.task import TaskCreate, TaskPrioritizeRequest, TaskResponse, TaskUpdate
-from app.services.ai_service import AIService
-from app.services.task_service import TaskService
-from app.main import limiter  
+from datetime import datetime
+from typing import Optional, List
+from pydantic import BaseModel, Field, field_validator
+import re
 
-logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/tasks", tags=["Tarefas"])
+def sanitize_text(text: str) -> str:
+    text = text.strip()
+    text = re.sub(r"[<>]", "", text)
+    text = re.sub(r"[\x00-\x1f]", "", text)
+    return text
 
-@router.get("/", response_model=List[TaskResponse])
-def list_tasks(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    try:
-        service = TaskService(db)
-        return service.get_all(current_user.id)
-    except Exception:
-        logger.error(f"Erro ao listar tasks user={current_user.id}")
-        raise HTTPException(status_code=500, detail="Erro interno do servidor.")
 
-@router.post("/", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
-def create_task(
-    data: TaskCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    try:
-        service = TaskService(db)
-        return service.create(data, current_user.id)
-    except Exception:
-        logger.error(f"Erro ao criar task user={current_user.id}")
-        raise HTTPException(status_code=500, detail="Erro interno do servidor.")
+class TaskCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=1000)
+    category: str = Field("geral", min_length=1, max_length=50)
 
-@router.put("/{task_id}", response_model=TaskResponse)
-def update_task(
-    task_id: int,
-    data: TaskUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    try:
-        service = TaskService(db)
-        return service.update(task_id, data, current_user.id)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except Exception:
-        logger.error(f"Erro ao atualizar task={task_id} user={current_user.id}")
-        raise HTTPException(status_code=500, detail="Erro interno do servidor.")
+    @field_validator("title")
+    def clean_title(cls, v):
+        return sanitize_text(v)
 
-@router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_task(
-    task_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    try:
-        service = TaskService(db)
-        service.delete(task_id, current_user.id)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except Exception:
-        logger.error(f"Erro ao deletar task={task_id} user={current_user.id}")
-        raise HTTPException(status_code=500, detail="Erro interno do servidor.")
+    @field_validator("description")
+    def clean_description(cls, v):
+        if v is None:
+            return v
+        return sanitize_text(v)
 
-@router.post("/prioritize", response_model=List[TaskResponse])
-@limiter.limit("10/minute")  # <-- ADICIONADO
-def prioritize_tasks(
-    request: Request,  # <-- ADICIONADO
-    data: TaskPrioritizeRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    try:
-        task_service = TaskService(db)
-        ai_service = AIService()
-        tasks = task_service.get_by_ids(data.task_ids, current_user.id)
-        if not tasks:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nenhuma tarefa encontrada.")
-        return ai_service.prioritize_tasks(tasks)
-    except HTTPException:
-        raise
-    except Exception:
-        logger.error(f"Erro ao priorizar tasks user={current_user.id}")
-        raise HTTPException(status_code=500, detail="Erro interno do servidor.")
+    @field_validator("category")
+    def clean_category(cls, v):
+        return sanitize_text(v)
 
-@router.get("/summary", response_model=dict)
-@limiter.limit("10/minute")  # <-- ADICIONADO
-def daily_summary(
-    request: Request,  # <-- ADICIONADO
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    try:
-        task_service = TaskService(db)
-        ai_service = AIService()
-        tasks = task_service.get_all(current_user.id)
-        summary = ai_service.generate_daily_summary(tasks)
-        return {"summary": summary}
-    except Exception:
-        logger.error(f"Erro ao gerar summary user={current_user.id}")
-        raise HTTPException(status_code=500, detail="Erro interno do servidor.")
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=1000)
+    is_completed: Optional[bool] = None
+    category: Optional[str] = Field(None, min_length=1, max_length=50)
+
+    @field_validator("title")
+    def clean_title(cls, v):
+        if v is None:
+            return v
+        return sanitize_text(v)
+
+    @field_validator("description")
+    def clean_description(cls, v):
+        if v is None:
+            return v
+        return sanitize_text(v)
+
+    @field_validator("category")
+    def clean_category(cls, v):
+        if v is None:
+            return v
+        return sanitize_text(v)
+
+
+class TaskResponse(BaseModel):
+    id: int
+    title: str
+    description: Optional[str]
+    is_completed: bool
+    priority: int
+    category: str
+    ai_suggestion: Optional[str]
+    user_id: int
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class TaskPrioritizeRequest(BaseModel):
+    task_ids: List[int] = Field(..., min_length=1, max_length=50)
+
+    @field_validator("task_ids")
+    def validate_ids(cls, v):
+        if any(i <= 0 for i in v):
+            raise ValueError("IDs devem ser números positivos.")
+        if len(v) != len(set(v)):
+            raise ValueError("IDs duplicados não são permitidos.")
+        return v
+
+
+class AIResponse(BaseModel):
+    summary: str
+    prioritized_tasks: List[TaskResponse]
