@@ -1,10 +1,10 @@
+import logging
 from typing import List
-
-from groq import Groq
-
+from groq import Groq, APIError, AuthenticationError, RateLimitError
 from app.core.settings import settings
 from app.models.task import Task
 
+logger = logging.getLogger(__name__)
 
 class AIService:
 
@@ -22,25 +22,39 @@ class AIService:
 
         prompt = f"Analise as tarefas e retorne SOMENTE os numeros em ordem de prioridade, separados por virgula.\n\nTarefas:\n{task_list}\n\nResponda APENAS com os numeros. Exemplo: 3,1,2,4"
 
-        response = self.client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=256,
-        )
-        response_text = response.choices[0].message.content.strip()
-        order = [int(n.strip()) - 1 for n in response_text.split(",") if n.strip().isdigit()]
+        try:
+            response = self.client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=256,
+            )
+            response_text = response.choices[0].message.content.strip()
+            order = [int(n.strip()) - 1 for n in response_text.split(",") if n.strip().isdigit()]
 
-        prioritized = []
-        seen = set()
-        for idx in order:
-            if 0 <= idx < len(tasks) and idx not in seen:
-                prioritized.append(tasks[idx])
-                seen.add(idx)
+            prioritized = []
+            seen = set()
+            for idx in order:
+                if 0 <= idx < len(tasks) and idx not in seen:
+                    prioritized.append(tasks[idx])
+                    seen.add(idx)
 
-        for i, task in enumerate(prioritized):
-            task.priority = i + 1
+            for i, task in enumerate(prioritized):
+                task.priority = i + 1
 
-        return prioritized
+            return prioritized
+
+        except AuthenticationError:
+            logger.error("Chave do Groq invalida em prioritize_tasks")
+            raise ValueError("Servico de IA indisponivel.")
+        except RateLimitError:
+            logger.error("Rate limit Groq em prioritize_tasks")
+            raise ValueError("Limite de IA atingido. Tente em instantes.")
+        except APIError as e:
+            logger.error(f"APIError Groq prioritize_tasks: {str(e)}")
+            raise ValueError("Erro no servico de IA.")
+        except Exception as e:
+            logger.error(f"Erro inesperado prioritize_tasks: {str(e)}")
+            raise ValueError("Erro inesperado ao priorizar tarefas.")
 
     def generate_daily_summary(self, tasks: List[Task]) -> str:
         if not tasks:
@@ -54,9 +68,23 @@ class AIService:
 
         prompt = f"Gere um resumo diario motivador em portugues (max 3 paragrafos).\n\nConcluidas:\n{completed_text}\n\nPendentes:\n{pending_text}"
 
-        response = self.client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=512,
-        )
-        return response.choices[0].message.content.strip()
+        try:
+            response = self.client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=512,
+            )
+            return response.choices[0].message.content.strip()
+
+        except AuthenticationError:
+            logger.error("Chave do Groq invalida em generate_daily_summary")
+            raise ValueError("Servico de IA indisponivel.")
+        except RateLimitError:
+            logger.error("Rate limit Groq em generate_daily_summary")
+            raise ValueError("Limite de IA atingido. Tente em instantes.")
+        except APIError as e:
+            logger.error(f"APIError Groq generate_daily_summary: {str(e)}")
+            raise ValueError("Erro no servico de IA.")
+        except Exception as e:
+            logger.error(f"Erro inesperado generate_daily_summary: {str(e)}")
+            raise ValueError("Erro inesperado ao gerar resumo.")
