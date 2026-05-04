@@ -1,13 +1,16 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, EmailStr, Field, field_validator
 import re
+import unicodedata
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
-def sanitize_text(text: str) -> str:
+def secure_text(text: str) -> str:
+    text = unicodedata.normalize("NFKC", text)
     text = text.strip()
-    text = re.sub(r"[<>]", "", text)
     text = re.sub(r"[\x00-\x1f]", "", text)
+    if "<" in text or ">" in text:
+        raise ValueError("Caracteres inválidos detectados.")
     return text
 
 
@@ -18,16 +21,20 @@ class UserCreate(BaseModel):
 
     @field_validator("name")
     def clean_name(cls, v):
-        return sanitize_text(v)
+        return secure_text(v)
 
     @field_validator("password")
     def validate_password(cls, v):
         if not re.search(r"[A-Z]", v):
             raise ValueError("Senha deve ter ao menos uma letra maiúscula.")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("Senha deve ter ao menos uma letra minúscula.")
         if not re.search(r"[0-9]", v):
             raise ValueError("Senha deve ter ao menos um número.")
         if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", v):
             raise ValueError("Senha deve ter ao menos um caractere especial.")
+        if len(set(v)) < 5:
+            raise ValueError("Senha muito previsível. Use caracteres mais variados.")
         return v
 
 
