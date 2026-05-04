@@ -4,22 +4,19 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
 from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
 from app.api.routes import auth, tasks, pdf
 from app.core.database import Base, engine
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
-# Logger seguro — erros internos nunca chegam ao cliente
 logger = logging.getLogger(__name__)
 
 Base.metadata.create_all(bind=engine)
 security = HTTPBearer()
 
-# 🔒 CORREÇÃO — confiar ZERO em headers do cliente
+# LIMITER GLOBAL — único em toda a aplicação
 def get_real_ip(request: Request) -> str:
-    return request.client.host  # <-- ALTERADO (sem X-Real-IP)
+    return request.client.host  # zero trust em headers
 
 limiter = Limiter(key_func=get_real_ip)
 
@@ -35,13 +32,12 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORREÇÃO 1 — Handler global sem vazar erro interno
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Erro interno em {request.url}: {str(exc)}")  # log só no servidor
+    logger.error("Erro interno", extra={"url": str(request.url), "error": str(exc)})
     return JSONResponse(
         status_code=500,
-        content={"detail": "Erro interno do servidor."},  # nunca vaza detalhes
+        content={"detail": "Erro interno do servidor."},
     )
 
 app.add_middleware(
@@ -59,7 +55,6 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    # CORREÇÃO 4 — Headers que estavam faltando
     response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
     response.headers["Content-Security-Policy"] = "default-src 'self'"
     response.headers["Cache-Control"] = "no-store"
@@ -75,7 +70,6 @@ app.include_router(auth.router)
 app.include_router(tasks.router)
 app.include_router(pdf.router)
 
-# CORREÇÃO 5 — Rate limit aplicado no health também
 @app.get("/health")
 @limiter.limit("10/minute")
 def health_check(request: Request):
