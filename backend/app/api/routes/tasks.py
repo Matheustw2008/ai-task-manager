@@ -8,14 +8,9 @@ from app.models.user import User
 from app.schemas.task import TaskCreate, TaskPrioritizeRequest, TaskResponse, TaskUpdate
 from app.services.ai_service import AIService
 from app.services.task_service import TaskService
-from slowapi import Limiter
+from app.main import limiter  # importa limiter global
 
 logger = logging.getLogger(__name__)
-
-def get_real_ip(request: Request) -> str:
-    return request.client.host  # zero trust em headers
-
-limiter = Limiter(key_func=get_real_ip)
 router = APIRouter(prefix="/tasks", tags=["Tarefas"])
 
 
@@ -24,7 +19,7 @@ def list_tasks(db: Session = Depends(get_db), current_user: User = Depends(get_c
     try:
         return TaskService(db).get_all(current_user.id)
     except Exception:
-        logger.error(f"Erro ao listar tasks user={current_user.id}")
+        logger.error("Erro ao listar tasks", extra={"user_id": current_user.id})
         raise HTTPException(status_code=500, detail="Erro interno do servidor.")
 
 
@@ -33,7 +28,7 @@ def create_task(data: TaskCreate, db: Session = Depends(get_db), current_user: U
     try:
         return TaskService(db).create(data, current_user.id)
     except Exception:
-        logger.error(f"Erro ao criar task user={current_user.id}")
+        logger.error("Erro ao criar task", extra={"user_id": current_user.id})
         raise HTTPException(status_code=500, detail="Erro interno do servidor.")
 
 
@@ -44,7 +39,7 @@ def update_task(task_id: int, data: TaskUpdate, db: Session = Depends(get_db), c
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception:
-        logger.error(f"Erro ao atualizar task={task_id} user={current_user.id}")
+        logger.error("Erro ao atualizar task", extra={"task_id": task_id, "user_id": current_user.id})
         raise HTTPException(status_code=500, detail="Erro interno do servidor.")
 
 
@@ -55,12 +50,12 @@ def delete_task(task_id: int, db: Session = Depends(get_db), current_user: User 
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception:
-        logger.error(f"Erro ao deletar task={task_id} user={current_user.id}")
+        logger.error("Erro ao deletar task", extra={"task_id": task_id, "user_id": current_user.id})
         raise HTTPException(status_code=500, detail="Erro interno do servidor.")
 
 
 @router.post("/prioritize", response_model=List[TaskResponse])
-@limiter.limit("10/minute")  # rate limit IA
+@limiter.limit("10/minute")
 def prioritize_tasks(request: Request, data: TaskPrioritizeRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     try:
         tasks = TaskService(db).get_by_ids(data.task_ids, current_user.id)
@@ -70,17 +65,17 @@ def prioritize_tasks(request: Request, data: TaskPrioritizeRequest, db: Session 
     except HTTPException:
         raise
     except Exception:
-        logger.error(f"Erro ao priorizar tasks user={current_user.id}")
+        logger.error("Erro ao priorizar tasks", extra={"user_id": current_user.id})
         raise HTTPException(status_code=500, detail="Erro interno do servidor.")
 
 
 @router.get("/summary", response_model=dict)
-@limiter.limit("10/minute")  # rate limit IA
+@limiter.limit("10/minute")
 def daily_summary(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     try:
         tasks = TaskService(db).get_all(current_user.id)
         summary = AIService().generate_daily_summary(tasks)
         return {"summary": summary}
     except Exception:
-        logger.error(f"Erro ao gerar summary user={current_user.id}")
+        logger.error("Erro ao gerar summary", extra={"user_id": current_user.id})
         raise HTTPException(status_code=500, detail="Erro interno do servidor.")
