@@ -1,6 +1,6 @@
 import logging
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.database import get_db
@@ -8,6 +8,7 @@ from app.models.user import User
 from app.schemas.task import TaskCreate, TaskPrioritizeRequest, TaskResponse, TaskUpdate
 from app.services.ai_service import AIService
 from app.services.task_service import TaskService
+from app.main import limiter  
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,9 @@ def delete_task(
         raise HTTPException(status_code=500, detail="Erro interno do servidor.")
 
 @router.post("/prioritize", response_model=List[TaskResponse])
+@limiter.limit("10/minute")  # <-- ADICIONADO
 def prioritize_tasks(
+    request: Request,  # <-- ADICIONADO
     data: TaskPrioritizeRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -89,7 +92,9 @@ def prioritize_tasks(
         raise HTTPException(status_code=500, detail="Erro interno do servidor.")
 
 @router.get("/summary", response_model=dict)
+@limiter.limit("10/minute")  # <-- ADICIONADO
 def daily_summary(
+    request: Request,  # <-- ADICIONADO
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
